@@ -20,21 +20,21 @@ from metrics import metric_base
 # Just-in-time processing of training images before feeding them to the networks.
 
 def process_reals(x, labels, lod, mirror_augment, drange_data, drange_net):
-    with tf.name_scope('DynamicRange'):
+    with tf.compat.v1.name_scope('DynamicRange'):
         x = tf.cast(x, tf.float32)
         x = misc.adjust_dynamic_range(x, drange_data, drange_net)
     if mirror_augment:
-        with tf.name_scope('MirrorAugment'):
-            x = tf.where(tf.random_uniform([tf.shape(x)[0]]) < 0.5, x, tf.reverse(x, [3]))
-    with tf.name_scope('FadeLOD'): # Smooth crossfade between consecutive levels-of-detail.
-        s = tf.shape(x)
+        with tf.compat.v1.name_scope('MirrorAugment'):
+            x = tf.compat.v1.where(tf.random.uniform([tf.shape(input=x)[0]]) < 0.5, x, tf.reverse(x, [3]))
+    with tf.compat.v1.name_scope('FadeLOD'): # Smooth crossfade between consecutive levels-of-detail.
+        s = tf.shape(input=x)
         y = tf.reshape(x, [-1, s[1], s[2]//2, 2, s[3]//2, 2])
-        y = tf.reduce_mean(y, axis=[3, 5], keepdims=True)
+        y = tf.reduce_mean(input_tensor=y, axis=[3, 5], keepdims=True)
         y = tf.tile(y, [1, 1, 1, 2, 1, 2])
         y = tf.reshape(y, [-1, s[1], s[2], s[3]])
         x = tflib.lerp(x, y, lod - tf.floor(lod))
-    with tf.name_scope('UpscaleLOD'): # Upscale to match the expected input/output size of the networks.
-        s = tf.shape(x)
+    with tf.compat.v1.name_scope('UpscaleLOD'): # Upscale to match the expected input/output size of the networks.
+        s = tf.shape(input=x)
         factor = tf.cast(2 ** tf.floor(lod), tf.int32)
         x = tf.reshape(x, [-1, s[1], s[2], 1, s[3], 1])
         x = tf.tile(x, [1, 1, 1, factor, 1, factor])
@@ -164,13 +164,13 @@ def training_loop(
 
     # Setup training inputs.
     print('Building TensorFlow graph...')
-    with tf.name_scope('Inputs'), tf.device('/cpu:0'):
-        lod_in               = tf.placeholder(tf.float32, name='lod_in', shape=[])
-        lrate_in             = tf.placeholder(tf.float32, name='lrate_in', shape=[])
-        minibatch_size_in    = tf.placeholder(tf.int32, name='minibatch_size_in', shape=[])
-        minibatch_gpu_in     = tf.placeholder(tf.int32, name='minibatch_gpu_in', shape=[])
+    with tf.compat.v1.name_scope('Inputs'), tf.device('/cpu:0'):
+        lod_in               = tf.compat.v1.placeholder(tf.float32, name='lod_in', shape=[])
+        lrate_in             = tf.compat.v1.placeholder(tf.float32, name='lrate_in', shape=[])
+        minibatch_size_in    = tf.compat.v1.placeholder(tf.int32, name='minibatch_size_in', shape=[])
+        minibatch_gpu_in     = tf.compat.v1.placeholder(tf.int32, name='minibatch_gpu_in', shape=[])
         minibatch_multiplier = minibatch_size_in // (minibatch_gpu_in * num_gpus)
-        Gs_beta              = 0.5 ** tf.div(tf.cast(minibatch_size_in, tf.float32), G_smoothing_kimg * 1000.0) if G_smoothing_kimg > 0.0 else 0.0
+        Gs_beta              = 0.5 ** tf.compat.v1.div(tf.cast(minibatch_size_in, tf.float32), G_smoothing_kimg * 1000.0) if G_smoothing_kimg > 0.0 else 0.0
 
     # Setup optimizers.
     G_opt_args = dict(G_opt_args)
@@ -191,14 +191,14 @@ def training_loop(
     # Build training graph for each GPU.
     data_fetch_ops = []
     for gpu in range(num_gpus):
-        with tf.name_scope('GPU%d' % gpu), tf.device('/gpu:%d' % gpu):
+        with tf.compat.v1.name_scope('GPU%d' % gpu), tf.device('/gpu:%d' % gpu):
 
             # Create GPU-specific shadow copies of G and D.
             G_gpu = G if gpu == 0 else G.clone(G.name + '_shadow')
             D_gpu = D if gpu == 0 else D.clone(D.name + '_shadow')
 
             # Fetch training data via temporary variables.
-            with tf.name_scope('DataFetch'):
+            with tf.compat.v1.name_scope('DataFetch'):
                 sched = training_schedule(cur_nimg=int(resume_kimg*1000), training_set=training_set, **sched_args)
                 reals_var = tf.Variable(name='reals', trainable=False, initial_value=tf.zeros([sched.minibatch_gpu] + training_set.shape))
                 labels_var = tf.Variable(name='labels', trainable=False, initial_value=tf.zeros([sched.minibatch_gpu, training_set.label_size]))
@@ -206,19 +206,19 @@ def training_loop(
                 reals_write, labels_write = process_reals(reals_write, labels_write, lod_in, mirror_augment, training_set.dynamic_range, drange_net)
                 reals_write = tf.concat([reals_write, reals_var[minibatch_gpu_in:]], axis=0)
                 labels_write = tf.concat([labels_write, labels_var[minibatch_gpu_in:]], axis=0)
-                data_fetch_ops += [tf.assign(reals_var, reals_write)]
-                data_fetch_ops += [tf.assign(labels_var, labels_write)]
+                data_fetch_ops += [tf.compat.v1.assign(reals_var, reals_write)]
+                data_fetch_ops += [tf.compat.v1.assign(labels_var, labels_write)]
                 reals_read = reals_var[:minibatch_gpu_in]
                 labels_read = labels_var[:minibatch_gpu_in]
 
             # Evaluate loss functions.
             lod_assign_ops = []
-            if 'lod' in G_gpu.vars: lod_assign_ops += [tf.assign(G_gpu.vars['lod'], lod_in)]
-            if 'lod' in D_gpu.vars: lod_assign_ops += [tf.assign(D_gpu.vars['lod'], lod_in)]
+            if 'lod' in G_gpu.vars: lod_assign_ops += [tf.compat.v1.assign(G_gpu.vars['lod'], lod_in)]
+            if 'lod' in D_gpu.vars: lod_assign_ops += [tf.compat.v1.assign(D_gpu.vars['lod'], lod_in)]
             with tf.control_dependencies(lod_assign_ops):
-                with tf.name_scope('G_loss'):
+                with tf.compat.v1.name_scope('G_loss'):
                     G_loss, G_reg = dnnlib.util.call_func_by_name(G=G_gpu, D=D_gpu, opt=G_opt, training_set=training_set, minibatch_size=minibatch_gpu_in, **G_loss_args)
-                with tf.name_scope('D_loss'):
+                with tf.compat.v1.name_scope('D_loss'):
                     D_loss, D_reg = dnnlib.util.call_func_by_name(G=G_gpu, D=D_gpu, opt=D_opt, training_set=training_set, minibatch_size=minibatch_gpu_in, reals=reals_read, labels=labels_read, **D_loss_args)
 
             # Register gradients.
@@ -226,10 +226,10 @@ def training_loop(
                 if G_reg is not None: G_loss += G_reg
                 if D_reg is not None: D_loss += D_reg
             else:
-                if G_reg is not None: G_reg_opt.register_gradients(tf.reduce_mean(G_reg * G_reg_interval), G_gpu.trainables)
-                if D_reg is not None: D_reg_opt.register_gradients(tf.reduce_mean(D_reg * D_reg_interval), D_gpu.trainables)
-            G_opt.register_gradients(tf.reduce_mean(G_loss), G_gpu.trainables)
-            D_opt.register_gradients(tf.reduce_mean(D_loss), D_gpu.trainables)
+                if G_reg is not None: G_reg_opt.register_gradients(tf.reduce_mean(input_tensor=G_reg * G_reg_interval), G_gpu.trainables)
+                if D_reg is not None: D_reg_opt.register_gradients(tf.reduce_mean(input_tensor=D_reg * D_reg_interval), D_gpu.trainables)
+            G_opt.register_gradients(tf.reduce_mean(input_tensor=G_loss), G_gpu.trainables)
+            D_opt.register_gradients(tf.reduce_mean(input_tensor=D_loss), D_gpu.trainables)
 
     # Setup training ops.
     data_fetch_op = tf.group(*data_fetch_ops)
@@ -240,17 +240,12 @@ def training_loop(
     Gs_update_op = Gs.setup_as_moving_average_of(G, beta=Gs_beta)
 
     # Finalize graph.
-    with tf.device('/gpu:0'):
-        try:
-            peak_gpu_mem_op = tf.contrib.memory_stats.MaxBytesInUse()
-        except tf.errors.NotFoundError:
-            peak_gpu_mem_op = tf.constant(0)
     tflib.init_uninitialized_vars()
 
     print('Initializing logs...')
-    summary_log = tf.summary.FileWriter(dnnlib.make_run_dir_path())
+    summary_log = tf.compat.v1.summary.FileWriter(dnnlib.make_run_dir_path())
     if save_tf_graph:
-        summary_log.add_graph(tf.get_default_graph())
+        summary_log.add_graph(tf.compat.v1.get_default_graph())
     if save_weight_histograms:
         G.setup_weight_histograms(); D.setup_weight_histograms()
     metrics = metric_base.MetricGroup(metric_arg_list)
@@ -327,7 +322,6 @@ def training_loop(
                 autosummary('Timing/sec_per_tick', tick_time),
                 autosummary('Timing/sec_per_kimg', tick_time / tick_kimg),
                 autosummary('Timing/maintenance_sec', maintenance_time),
-                autosummary('Resources/peak_gpu_mem_gb', peak_gpu_mem_op.eval() / 2**30)))
             autosummary('Timing/total_hours', total_time / (60.0 * 60.0))
             autosummary('Timing/total_days', total_time / (24.0 * 60.0 * 60.0))
 

@@ -73,8 +73,8 @@ def _fused_bias_act_ref(x, b, axis, act, alpha, gain):
     """Slow reference implementation of `fused_bias_act()` using standard TensorFlow ops."""
 
     # Validate arguments.
-    x = tf.convert_to_tensor(x)
-    b = tf.convert_to_tensor(b) if b is not None else tf.constant([], dtype=x.dtype)
+    x = tf.convert_to_tensor(value=x)
+    b = tf.convert_to_tensor(value=b) if b is not None else tf.constant([], dtype=x.dtype)
     act_spec = activation_funcs[act]
     assert b.shape.rank == 1 and (b.shape[0] == 0 or b.shape[0] == x.shape[axis])
     assert b.shape[0] == 0 or 0 <= axis < x.shape.rank
@@ -101,9 +101,9 @@ def _fused_bias_act_cuda(x, b, axis, act, alpha, gain):
     """Fast CUDA implementation of `fused_bias_act()` using custom ops."""
 
     # Validate arguments.
-    x = tf.convert_to_tensor(x)
+    x = tf.convert_to_tensor(value=x)
     empty_tensor = tf.constant([], dtype=x.dtype)
-    b = tf.convert_to_tensor(b) if b is not None else empty_tensor
+    b = tf.convert_to_tensor(value=b) if b is not None else empty_tensor
     act_spec = activation_funcs[act]
     assert b.shape.rank == 1 and (b.shape[0] == 0 or b.shape[0] == x.shape[axis])
     assert b.shape[0] == 0 or 0 <= axis < x.shape.rank
@@ -139,9 +139,9 @@ def _fused_bias_act_cuda(x, b, axis, act, alpha, gain):
             return empty_tensor
         db = dx
         if axis < x.shape.rank - 1:
-            db = tf.reduce_sum(db, list(range(axis + 1, x.shape.rank)))
+            db = tf.reduce_sum(input_tensor=db, axis=list(range(axis + 1, x.shape.rank)))
         if axis > 0:
-            db = tf.reduce_sum(db, list(range(axis)))
+            db = tf.reduce_sum(input_tensor=db, axis=list(range(axis)))
         db.set_shape(b.shape)
         return db
 

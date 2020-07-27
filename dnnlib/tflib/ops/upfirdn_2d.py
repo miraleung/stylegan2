@@ -66,7 +66,7 @@ def upfirdn_2d(x, k, upx=1, upy=1, downx=1, downy=1, padx0=0, padx1=0, pady0=0, 
 def _upfirdn_2d_ref(x, k, upx, upy, downx, downy, padx0, padx1, pady0, pady1):
     """Slow reference implementation of `upfirdn_2d()` using standard TensorFlow ops."""
 
-    x = tf.convert_to_tensor(x)
+    x = tf.convert_to_tensor(value=x)
     k = np.asarray(k, dtype=np.float32)
     assert x.shape.rank == 4
     inH = x.shape[1].value
@@ -82,20 +82,20 @@ def _upfirdn_2d_ref(x, k, upx, upy, downx, downy, padx0, padx1, pady0, pady1):
 
     # Upsample (insert zeros).
     x = tf.reshape(x, [-1, inH, 1, inW, 1, minorDim])
-    x = tf.pad(x, [[0, 0], [0, 0], [0, upy - 1], [0, 0], [0, upx - 1], [0, 0]])
+    x = tf.pad(tensor=x, paddings=[[0, 0], [0, 0], [0, upy - 1], [0, 0], [0, upx - 1], [0, 0]])
     x = tf.reshape(x, [-1, inH * upy, inW * upx, minorDim])
 
     # Pad (crop if negative).
-    x = tf.pad(x, [[0, 0], [max(pady0, 0), max(pady1, 0)], [max(padx0, 0), max(padx1, 0)], [0, 0]])
+    x = tf.pad(tensor=x, paddings=[[0, 0], [max(pady0, 0), max(pady1, 0)], [max(padx0, 0), max(padx1, 0)], [0, 0]])
     x = x[:, max(-pady0, 0) : x.shape[1].value - max(-pady1, 0), max(-padx0, 0) : x.shape[2].value - max(-padx1, 0), :]
 
     # Convolve with filter.
-    x = tf.transpose(x, [0, 3, 1, 2])
+    x = tf.transpose(a=x, perm=[0, 3, 1, 2])
     x = tf.reshape(x, [-1, 1, inH * upy + pady0 + pady1, inW * upx + padx0 + padx1])
     w = tf.constant(k[::-1, ::-1, np.newaxis, np.newaxis], dtype=x.dtype)
-    x = tf.nn.conv2d(x, w, strides=[1,1,1,1], padding='VALID', data_format='NCHW')
+    x = tf.nn.conv2d(input=x, filters=w, strides=[1,1,1,1], padding='VALID', data_format='NCHW')
     x = tf.reshape(x, [-1, minorDim, inH * upy + pady0 + pady1 - kernelH + 1, inW * upx + padx0 + padx1 - kernelW + 1])
-    x = tf.transpose(x, [0, 2, 3, 1])
+    x = tf.transpose(a=x, perm=[0, 2, 3, 1])
 
     # Downsample (throw away pixels).
     return x[:, ::downy, ::downx, :]
@@ -105,7 +105,7 @@ def _upfirdn_2d_ref(x, k, upx, upy, downx, downy, padx0, padx1, pady0, pady1):
 def _upfirdn_2d_cuda(x, k, upx, upy, downx, downy, padx0, padx1, pady0, pady1):
     """Fast CUDA implementation of `upfirdn_2d()` using custom ops."""
 
-    x = tf.convert_to_tensor(x)
+    x = tf.convert_to_tensor(value=x)
     k = np.asarray(k, dtype=np.float32)
     majorDim, inH, inW, minorDim = x.shape.as_list()
     kernelH, kernelW = k.shape
@@ -258,7 +258,7 @@ def upsample_conv_2d(x, w, k=None, factor=2, gain=1, data_format='NCHW', impl='c
     assert isinstance(factor, int) and factor >= 1
 
     # Check weight shape.
-    w = tf.convert_to_tensor(w)
+    w = tf.convert_to_tensor(value=w)
     assert w.shape.rank == 4
     convH = w.shape[0].value
     convW = w.shape[1].value
@@ -284,7 +284,7 @@ def upsample_conv_2d(x, w, k=None, factor=2, gain=1, data_format='NCHW', impl='c
 
     # Transpose weights.
     w = tf.reshape(w, [convH, convW, inC, num_groups, -1])
-    w = tf.transpose(w[::-1, ::-1], [0, 1, 4, 3, 2])
+    w = tf.transpose(a=w[::-1, ::-1], perm=[0, 1, 4, 3, 2])
     w = tf.reshape(w, [convH, convW, -1, num_groups * inC])
 
     # Execute.
@@ -317,7 +317,7 @@ def conv_downsample_2d(x, w, k=None, factor=2, gain=1, data_format='NCHW', impl=
     """
 
     assert isinstance(factor, int) and factor >= 1
-    w = tf.convert_to_tensor(w)
+    w = tf.convert_to_tensor(value=w)
     convH, convW, _inC, _outC = w.shape.as_list()
     assert convW == convH
     if k is None:
@@ -329,7 +329,7 @@ def conv_downsample_2d(x, w, k=None, factor=2, gain=1, data_format='NCHW', impl=
     else:
         s = [1, factor, factor, 1]
     x = _simple_upfirdn_2d(x, k, pad0=(p+1)//2, pad1=p//2, data_format=data_format, impl=impl)
-    return tf.nn.conv2d(x, w, strides=s, padding='VALID', data_format=data_format)
+    return tf.nn.conv2d(input=x, filters=w, strides=s, padding='VALID', data_format=data_format)
 
 #----------------------------------------------------------------------------
 # Internal helper funcs.
@@ -339,7 +339,7 @@ def _shape(tf_expr, dim_idx):
         dim = tf_expr.shape[dim_idx].value
         if dim is not None:
             return dim
-    return tf.shape(tf_expr)[dim_idx]
+    return tf.shape(input=tf_expr)[dim_idx]
 
 def _setup_kernel(k):
     k = np.asarray(k, dtype=np.float32)
